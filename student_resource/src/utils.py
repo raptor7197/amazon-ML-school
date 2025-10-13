@@ -8,7 +8,7 @@ import numpy as np
 from pathlib import Path
 from functools import partial
 import requests
-import urllib
+import urllib.request
 
 def download_image(image_link, savefolder):
     if(isinstance(image_link, str)):
@@ -16,7 +16,7 @@ def download_image(image_link, savefolder):
         image_save_path = os.path.join(savefolder, filename)
         if(not os.path.exists(image_save_path)):
             try:
-                urllib.request.urlretrieve(image_link, image_save_path)    
+                urllib.request.urlretrieve(image_link, image_save_path)
             except Exception as ex:
                 print('Warning: Not able to download - {}\n{}'.format(image_link, ex))
         else:
@@ -28,7 +28,7 @@ def download_images(image_links, download_folder):
         os.makedirs(download_folder)
     results = []
     download_image_partial = partial(download_image, savefolder=download_folder)
-    with multiprocessing.Pool(100) as pool:
+    with multiprocessing.Pool(4) as pool:  # Reduced for demo
         for result in tqdm(pool.imap(download_image_partial, image_links), total=len(image_links)):
             results.append(result)
         pool.close()
