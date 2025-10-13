@@ -11,8 +11,6 @@ from sklearn.model_selection import train_test_split
 import warnings
 warnings.filterwarnings('ignore')
 import optuna
-import wandb
-import joblib
 import shap
 import matplotlib.pyplot as plt
 
@@ -126,7 +124,7 @@ def extract_image_features(image_links, download_folder='images'):
 
     return np.array(features)
 
-def create_multimodal_features(train, test, sample_size=None, with_images=True):
+def create_multimodal_features(train, test, sample_size=None):
     """Create combined text and image features"""
     # Load models
     print("Loading models...")
@@ -137,38 +135,30 @@ def create_multimodal_features(train, test, sample_size=None, with_images=True):
     train_text_features = extract_text_features(train['catalog_content'].tolist(), text_model)
     test_text_features = extract_text_features(test['catalog_content'].tolist(), text_model)
 
-    if with_images:
-        # Extract image features
-        print("Extracting image features...")
-        download_folder = 'images'
-        train_image_features = extract_image_features(train['image_link'].tolist(), download_folder)
-        test_image_features = extract_image_features(test['image_link'].tolist(), download_folder)
+    # Extract image features
+    print("Extracting image features...")
+    download_folder = 'images'
+    train_image_features = extract_image_features(train['image_link'].tolist(), download_folder)
+    test_image_features = extract_image_features(test['image_link'].tolist(), download_folder)
 
-        # Combine features
-        print("Combining features...")
-        X_train = np.hstack([train_text_features, train_image_features])
-        X_test = np.hstack([test_text_features, test_image_features])
-    else:
-        X_train = train_text_features
-        X_test = test_text_features
+    # Combine features
+    print("Combining features...")
+    X_train = np.hstack([train_text_features, train_image_features])
+    X_test = np.hstack([test_text_features, test_image_features])
 
     y_train = train['price'].values
 
     print(f"Combined features shape: {X_train.shape}")
 
-    # Save embeddings
-    np.save(f'train_embeddings_with_images_{with_images}.npy', X_train)
-    np.save(f'test_embeddings_with_images_{with_images}.npy', X_test)
-
     feature_names = [f'text_feature_{i}' for i in range(train_text_features.shape[1])]
-    if with_images:
-        feature_names += [f'image_feature_{i}' for i in range(train_image_features.shape[1])]
+    feature_names += [f'image_feature_{i}' for i in range(train_image_features.shape[1])]
 
     return X_train, X_test, y_train, feature_names
 
 def train_improved_model(X_train, y_train):
     """Train Ridge model on multimodal features"""
     # Split for validation
+    from sklearn.model_selection import train_test_split
     X_train_split, X_val, y_train_split, y_val = train_test_split(
         X_train, y_train, test_size=0.2, random_state=42
     )
@@ -191,9 +181,6 @@ def train_improved_model(X_train, y_train):
 
     # Train on full data
     model.fit(X_train, y_train)
-
-    # Save the model
-    joblib.dump(model, 'improved_model.joblib')
 
     return model
 
@@ -248,22 +235,23 @@ def create_submission(sample_ids, predictions, filename='improved_submission.csv
     print(f"Submission shape: {submission.shape}")
     print(f"Price range: ${submission['price'].min():.2f} - ${submission['price'].max():.2f}")
 
+def explain_model(model, X_train, feature_names):
+    print("Explaining model with SHAP...")
+    explainer = shap.TreeExplainer(model.named_estimators_['lgbm'])
+    shap_values = explainer.shap_values(X_train)
+    shap.summary_plot(shap_values, X_train, feature_names=feature_names, show=False)
+    plt.savefig('shap_summary_plot.png')
+    plt.close()
+
 def main(sample_size=100):  # Use small sample for demo
     """Main function to run improved multimodal model"""
     print("Starting improved multimodal model...")
 
-    # Run experiment with images
-    run_experiment(with_images=True, sample_size=sample_size)
-
-    # Run experiment without images
-    run_experiment(with_images=False, sample_size=sample_size)
-
-def run_experiment(with_images, sample_size=100):
     # Load data
     train, test = load_data(sample_size=sample_size)
 
-    # Create features
-    X_train, X_test, y_train, feature_names = create_multimodal_features(train, test, sample_size, with_images)
+    # Create multimodal features
+    X_train, X_test, y_train, feature_names = create_multimodal_features(train, test, sample_size)
 
     # Train model
     model = train_improved_model(X_train, y_train)
@@ -274,18 +262,10 @@ def run_experiment(with_images, sample_size=100):
     test_predictions = np.maximum(test_predictions, 0)  # Non-negative
 
     # Create submission
-    create_submission(test['sample_id'].values, test_predictions, f'improved_submission_with_images_{with_images}.csv')
+    create_submission(test['sample_id'].values, test_predictions, 'improved_submission.csv')
 
     # Explain model
-    explain_model(model, X_train, feature_names, with_images)
-
-def explain_model(model, X_train, feature_names, with_images):
-    print("Explaining model with SHAP...")
-    explainer = shap.TreeExplainer(model.named_estimators_['lgbm'])
-    shap_values = explainer.shap_values(X_train)
-    shap.summary_plot(shap_values, X_train, feature_names=feature_names, show=False)
-    plt.savefig(f'shap_summary_plot_with_images_{with_images}.png')
-    plt.close()
+    explain_model(model, X_train, feature_names)
 
 if __name__ == "__main__":
-    main(sample_size=1000)
+    main()
