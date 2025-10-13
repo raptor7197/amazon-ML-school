@@ -7,8 +7,14 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 from lightgbm import LGBMRegressor
 from sklearn.ensemble import VotingRegressor
+from sklearn.model_selection import train_test_split
 import warnings
 warnings.filterwarnings('ignore')
+import optuna
+import wandb
+import joblib
+import shap
+import matplotlib.pyplot as plt
 
 # Image processing imports
 import timm
@@ -18,7 +24,7 @@ from PIL import Image
 from utils import download_images
 
 # Define paths
-DATASET_FOLDER = Path('../dataset/')
+DATASET_FOLDER = Path('student_resource/dataset/')
 
 def parse_catalog_content(content):
     """Parse catalog_content to extract numerical features"""
@@ -120,7 +126,7 @@ def extract_image_features(image_links, download_folder='images'):
 
     return np.array(features)
 
-def create_multimodal_features(train, test, sample_size=None):
+def create_multimodal_features(train, test, sample_size=None, with_images=True):
     """Create combined text and image features"""
     # Load models
     print("Loading models...")
@@ -131,47 +137,104 @@ def create_multimodal_features(train, test, sample_size=None):
     train_text_features = extract_text_features(train['catalog_content'].tolist(), text_model)
     test_text_features = extract_text_features(test['catalog_content'].tolist(), text_model)
 
-    # Extract image features
-    print("Extracting image features...")
-    download_folder = 'images'
-    train_image_features = extract_image_features(train['image_link'].tolist(), download_folder)
-    test_image_features = extract_image_features(test['image_link'].tolist(), download_folder)
+    if with_images:
+        # Extract image features
+        print("Extracting image features...")
+        download_folder = 'images'
+        train_image_features = extract_image_features(train['image_link'].tolist(), download_folder)
+        test_image_features = extract_image_features(test['image_link'].tolist(), download_folder)
 
-    # Combine features
-    print("Combining features...")
-    X_train = np.hstack([train_text_features, train_image_features])
-    X_test = np.hstack([test_text_features, test_image_features])
+        # Combine features
+        print("Combining features...")
+        X_train = np.hstack([train_text_features, train_image_features])
+        X_test = np.hstack([test_text_features, test_image_features])
+    else:
+        X_train = train_text_features
+        X_test = test_text_features
 
     y_train = train['price'].values
 
     print(f"Combined features shape: {X_train.shape}")
 
-    return X_train, X_test, y_train
+    # Save embeddings
+    np.save(f'train_embeddings_with_images_{with_images}.npy', X_train)
+    np.save(f'test_embeddings_with_images_{with_images}.npy', X_test)
+
+    feature_names = [f'text_feature_{i}' for i in range(train_text_features.shape[1])]
+    if with_images:
+        feature_names += [f'image_feature_{i}' for i in range(train_image_features.shape[1])]
+
+    return X_train, X_test, y_train, feature_names
 
 def train_improved_model(X_train, y_train):
     """Train Ridge model on multimodal features"""
     # Split for validation
-    from sklearn.model_selection import train_test_split
     X_train_split, X_val, y_train_split, y_val = train_test_split(
         X_train, y_train, test_size=0.2, random_state=42
     )
 
+    # Tune LGBM hyperparameters
+    print("Tuning LGBM hyperparameters...")
+    best_params = tune_lgbm(X_train, y_train)
+
     # Train ensemble model
     print("Training ensemble model (Ridge + LGBM) on multimodal features...")
     ridge = Ridge(alpha=1.0)
-    lgbm = LGBMRegressor(n_estimators=100, random_state=42)
+    lgbm = LGBMRegressor(**best_params, random_state=42)
     model = VotingRegressor([('ridge', ridge), ('lgbm', lgbm)])
     model.fit(X_train_split, y_train_split)
 
     # Validate
     y_val_pred = model.predict(X_val)
     val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
-    print(".4f")
+    print(f"Validation RMSE: {val_rmse:.4f}")
 
     # Train on full data
     model.fit(X_train, y_train)
 
+    # Save the model
+    joblib.dump(model, 'improved_model.joblib')
+
     return model
+
+def tune_lgbm(X_train, y_train):
+    def objective(trial):
+        params = {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+            'num_leaves': trial.suggest_int('num_leaves', 20, 300),
+            'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
+            'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
+            'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
+            'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
+            'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 10.0, log=True),
+            'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 10.0, log=True),
+        }
+        
+        model = LGBMRegressor(**params, random_state=42)
+        
+        X_train_split, X_val, y_train_split, y_val = train_test_split(
+            X_train, y_train, test_size=0.2, random_state=42
+        )
+        
+        model.fit(X_train_split, y_train_split)
+        y_val_pred = model.predict(X_val)
+        rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
+        
+        return rmse
+
+    study = optuna.create_study(direction='minimize')
+    study.optimize(objective, n_trials=100)
+    
+    print('Best trial:')
+    trial = study.best_trial
+    
+    print('  Value: {}'.format(trial.value))
+    print('  Params: ')
+    for key, value in trial.params.items():
+        print('    {}: {}'.format(key, value))
+        
+    return study.best_params
 
 def create_submission(sample_ids, predictions, filename='improved_submission.csv'):
     """Create submission CSV"""
@@ -189,11 +252,18 @@ def main(sample_size=100):  # Use small sample for demo
     """Main function to run improved multimodal model"""
     print("Starting improved multimodal model...")
 
+    # Run experiment with images
+    run_experiment(with_images=True, sample_size=sample_size)
+
+    # Run experiment without images
+    run_experiment(with_images=False, sample_size=sample_size)
+
+def run_experiment(with_images, sample_size=100):
     # Load data
     train, test = load_data(sample_size=sample_size)
 
-    # Create multimodal features
-    X_train, X_test, y_train = create_multimodal_features(train, test, sample_size)
+    # Create features
+    X_train, X_test, y_train, feature_names = create_multimodal_features(train, test, sample_size, with_images)
 
     # Train model
     model = train_improved_model(X_train, y_train)
@@ -204,7 +274,18 @@ def main(sample_size=100):  # Use small sample for demo
     test_predictions = np.maximum(test_predictions, 0)  # Non-negative
 
     # Create submission
-    create_submission(test['sample_id'].values, test_predictions, 'improved_submission.csv')
+    create_submission(test['sample_id'].values, test_predictions, f'improved_submission_with_images_{with_images}.csv')
+
+    # Explain model
+    explain_model(model, X_train, feature_names, with_images)
+
+def explain_model(model, X_train, feature_names, with_images):
+    print("Explaining model with SHAP...")
+    explainer = shap.TreeExplainer(model.named_estimators_['lgbm'])
+    shap_values = explainer.shap_values(X_train)
+    shap.summary_plot(shap_values, X_train, feature_names=feature_names, show=False)
+    plt.savefig(f'shap_summary_plot_with_images_{with_images}.png')
+    plt.close()
 
 if __name__ == "__main__":
-    main()
+    main(sample_size=1000)
