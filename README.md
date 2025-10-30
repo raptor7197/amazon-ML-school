@@ -2,7 +2,7 @@
 
 An advanced machine learning system for predicting product prices using catalog content (text) and product images.
 
-## 📋 Overview
+##  Overview
 
 This project implements a comprehensive price prediction pipeline that combines:
 - Text feature extraction using TF-IDF and transformer-based embeddings
@@ -10,7 +10,7 @@ This project implements a comprehensive price prediction pipeline that combines:
 - Ensemble modeling with LightGBM and neural networks
 - Production-ready API deployment with FastAPI
 
-## 🚀 Features
+##  Features
 
 - **Multi-modal Learning**: Combines text and image features for robust predictions
 - **Advanced NLP**: Leverages sentence-transformers and BERT embeddings
@@ -20,7 +20,7 @@ This project implements a comprehensive price prediction pipeline that combines:
 - **Experiment Tracking**: MLflow and Weights & Biases integration
 - **Hyperparameter Optimization**: Automated tuning with Optuna
 
-## 🛠️ Installation
+##  Installation
 
 ### Prerequisites
 - Python 3.10+
@@ -50,7 +50,7 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 amazon-price-predictor/
@@ -74,7 +74,7 @@ amazon-price-predictor/
 └── pyproject.toml        # Project configuration
 ```
 
-## 🏃 Quick Start
+##  Quick Start
 
 ### 1. Data Preparation
 ```bash
@@ -101,7 +101,7 @@ python scripts/predict.py --model models/best_model.pkl --input student_resource
 uvicorn src.api.main:app --reload
 ```
 
-## 📊 Model Pipeline
+##  Model Pipeline
 
 1. **Data Loading**: Efficient loading with pandas and data validation
 2. **Feature Engineering**:
@@ -114,7 +114,7 @@ uvicorn src.api.main:app --reload
 4. **Evaluation**: K-fold cross-validation with comprehensive metrics
 5. **Deployment**: FastAPI with async predictions
 
-## 🔧 Configuration
+##  Configuration
 
 Edit `config/config.yaml` to customize:
 - Model hyperparameters
@@ -122,7 +122,7 @@ Edit `config/config.yaml` to customize:
 - Training settings
 - API configuration
 
-## 🧪 Testing
+##  Testing
 
 Run all tests:
 ```bash
@@ -134,7 +134,7 @@ Run with coverage:
 pytest --cov=src --cov-report=html
 ```
 
-## 🐳 Docker
+##  Docker
 
 Build the image:
 ```bash
@@ -146,14 +146,14 @@ Run the container:
 docker run -p 8000:8000 amazon-price-predictor
 ```
 
-## 📈 Performance
+##  Performance
 
 | Model | CV RMSE | Test RMSE | Training Time |
 |-------|---------|-----------|---------------|
 | Baseline (TF-IDF + LightGBM) | X.XX | X.XX | XX min |
 | Advanced (Multi-modal) | X.XX | X.XX | XX min |
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
@@ -161,15 +161,15 @@ docker run -p 8000:8000 amazon-price-predictor
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
+##  License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 👥 Authors
+##  Authors
 
-- Your Name - [GitHub](https://github.com/yourusername)
+- Your Name - [GitHub](https://github.com/raptor7197)
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - Amazon for the dataset
 - Hugging Face for transformer models
