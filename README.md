@@ -167,10 +167,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ##  Authors
 
-- Your Name - [GitHub](https://github.com/raptor7197)
-
-##  Acknowledgments
-
-- Amazon for the dataset
-- Hugging Face for transformer models
-- OpenAI for CLIP model
+- Vamsi Krishna - [GitHub](https://github.com/raptor7197)
